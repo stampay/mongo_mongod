@@ -35,7 +35,7 @@
 - name: make sure the hostname is available in /etc/hosts
   lineinfile: dest=/etc/hosts regexp="{{ ansible_hostname }}" line="{{ hostvars[inventory_hostname].ansible_default_ipv4.address + " " + ansible_hostname }}" state=present
 
-- name: Create the data directory for the mongod
+- name: Create the data directory for the namenode metadata
   file: path={{ mongod_datadir_prefix }} owner={{ mongo_user }} group={{ mongo_group }} state=directory
 
 - name: Install the mongodb package
@@ -56,14 +56,11 @@
   when: ansible_os_family == "RedHat"
 
 - name: Create the mongodb startup file for Debian
-  template: src=mongod_debian_init.j2 dest=/etc/init/mongodb-{{ mongod_port }}.conf mode=0655
+  template: src=mongod_debian_init.j2 dest=/etc/init/mongod-{{ mongod_port }}.conf mode=0655
   when: ansible_os_family == "Debian"
 
 - name: Create the mongodb configuration file
   template: src=mongod.conf.j2 dest=/etc/mongod-{{ mongod_port }}.conf
-
-- name: Generate the keyfile for authentication
-  set_fact: mongod_secret_key="{{ lookup('password', 'secret length=256 chars=ascii_letters,digits') }}"
 
 - name: Copy the keyfile for authentication
   copy: src=secret dest={{ mongod_datadir_prefix }}/secret owner={{ mongo_user }} group={{ mongo_group }} mode=0400
@@ -72,8 +69,29 @@
   command: creates=/var/lock/subsys/mongod-{{ mongod_port }} /etc/init.d/mongod-{{ mongod_port }} start
   when: ansible_os_family == "RedHat"
 
+- name: Stop the default
+  service: name=mongod state=stopped enabled=false
+  when: ansible_os_family == "Debian"
+
+- name: restart machine
+  command: shutdown -r now "Ansible updates triggered"
+  async: 0
+  poll: 0
+  ignore_errors: true
+  sudo: true
+
+- name: waiting for server to come back
+  local_action:
+    module: wait_for
+      host={{ inventory_hostname }}
+      port=22
+      delay=1
+      state=started
+  sudo: false
+
+
 - name: Start the mongodb service for Ubuntu variants
-  service: name=mongodb-{{ mongod_port }} state=started
+  service: name=mongod-{{ mongod_port }} state=started enabled=true
   when: ansible_os_family == "Debian"
 
 - name: Create the file to initialize the mongod replica set
