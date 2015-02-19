@@ -92,10 +92,12 @@
       state=started
   sudo: false
 
-
 - name: Start the mongodb service for Ubuntu variants
   service: name=mongod-{{ mongod_port }} state=started enabled=true
   when: ansible_os_family == "Debian"
+
+- name: Wait for mongodb service to start
+  wait_for: port={{mongod_port}}
 
 - name: Create the file to initialize the mongod replica set
   template: src=repset_init.j2 dest=/tmp/repset_init.js
